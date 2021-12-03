@@ -9,7 +9,7 @@ Please fork this repo before you start working on the challenge. We will evaluat
 1. Create a scraper for [apartmentlist.com](https://www.apartmentlist.com/) and collect the zip code, property amenities, unit amenities, number of beds, rent and sqft for all listings in [Evanston](https://www.apartmentlist.com/il/evanston). If a listing has multiple units, treat each unit as its own listing. 
     * Hint: Interact with the website a bit. Change pages and click on listings and monitor some of the network activity. See if you can use any of their network calls to make a more efficient scraper than doing one at a time. (Bonus)
 
-2. Save all of this data to your choice of database.
+2. Save all of this data to your choice of database. (Using SQLite will make it difficult to write the second query so we recommend against using this one)
 
 3. Write two queries to answer the following questions:
    * For each of the property and unit amenities, list the number of properties each appear on? An example output might look like:
