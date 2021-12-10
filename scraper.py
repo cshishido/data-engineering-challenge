@@ -1,7 +1,9 @@
 import requests
 import re
+import os
 import json
 import psycopg2
+from psycopg2.extras import execute_values
 
 class ApartmentlistScraper():
 
@@ -71,7 +73,7 @@ class ApartmentlistScraper():
 
     def get_listing_batch(self, rental_ids):
         """
-        Get listing data for all rentals in rental_ids_batch list from listings api endpoint
+        Get listing data for all rentals in rental_ids batch list from listings api endpoint
         """
         properties_to_query = ['address',
                                'amenities',
@@ -111,20 +113,32 @@ class ApartmentlistScraper():
 
 class ApartmentlistLoader():
 
-    def __init__(self) -> None:
+    def __init__(self, dsn) -> None:
         self.conn = None
         self.units_records = None
         self.amenities_records = None
+        self.dsn = dsn
 
     def connect_db(self, dsn):
-        self.conn = psycopg2.connection(dsn)
+        self.conn = psycopg2.connect(dsn)
 
     def parse_records(self, listings):
         """
         Flatten listings json to form units table and amenities table contents
         """
-        units = self.flatten_units()
-        amenities = self.parse_amenites()
+        # for the purposes of this challenge, omit all listing not in Evanston
+        listings = [listing for listing in listings if listing['city'] == 'Evanston']
+
+        #flatten units and amenities data
+        self.amenities_records = self.flatten_amenities(listings)
+
+        self.units_records = []
+        # minor data type cleaning
+        for unit in self.flatten_units(listings):
+            if unit['sqft'] <= 0:
+                unit['sqft'] = None # Null preferable to 0 in database for missing sqft
+            self.units_records.append(unit)
+        return self.units_records, self.amenities_records                
 
     @staticmethod
     def flatten_units(listings):
@@ -164,12 +178,32 @@ class ApartmentlistLoader():
         return ameneties
     
     def load_units(self):
-        pass
+        units_insert_query = 'INSERT INTO units (unit_id, zip, city, bed, sqft) VALUES %s'
+        units_template = '(%(unit_id)s, %(zip)s, %(city)s, %(bed)s, %(sqft)s)'
+        cursor = self.conn.cursor()
+        execute_values(cursor, units_insert_query, self.units_records, template=units_template)
 
+    def load_amenities(self):
+        amenities_insert_query = 'INSERT INTO amenities (unit_id, amenity, amenity_type) VALUES %s'
+        amenities_template = '(%(unit_id)s, %(amenity)s, %(amenity_type)s)'
+        cursor = self.conn.cursor()
+        execute_values(cursor, amenities_insert_query, self.amenities_records, template=amenities_template)
 
-        
+    def load_all(self):
+
+        self.connect_db(self.dsn)
+        self.load_units()
+        self.load_amenities()
+        self.conn.commit()
+        self.conn.close()
+
+# run the scraper as script
 if __name__ == '__main__':
     scraper = ApartmentlistScraper()
     ids = scraper.get_rental_ids()
     data = scraper.get_listing_data(ids)
-    print(len(data))
+    
+    dsn = os.environ['DEMO_DSN']
+    loader = ApartmentlistLoader(dsn)
+    loader.parse_records(data)
+    loader.load_all()
