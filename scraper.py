@@ -187,6 +187,7 @@ class ApartmentlistLoader():
         units_insert_query = 'INSERT INTO units (unit_id, zip, city, bed, sqft, rent) VALUES %s'
         units_template = '(%(unit_id)s, %(zip)s, %(city)s, %(bed)s, %(sqft)s, %(rent)s)'
         cursor = self.conn.cursor()
+        # using psycopg2's execute_values() sanitizes inputs and handles batch insertion
         execute_values(cursor, units_insert_query, self.units_records, template=units_template)
 
     def load_amenities(self):
@@ -208,8 +209,10 @@ class ApartmentlistLoader():
         self.conn.commit()
         self.conn.close()
 
-# run the scraper as script
-if __name__ == '__main__':
+def run_scraper():
+    """
+    calls the scraper and loader components to run as a script
+    """
     scraper = ApartmentlistScraper()
     ids = scraper.get_rental_ids()
     data = scraper.get_listing_data(ids)
@@ -218,3 +221,8 @@ if __name__ == '__main__':
     loader = ApartmentlistLoader(dsn)
     loader.parse_records(data)
     loader.load_all()
+
+# run the scraper as script
+if __name__ == '__main__':
+    run_scraper()
+    
