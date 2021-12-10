@@ -1,6 +1,7 @@
 import requests
 import re
 import json
+import psycopg2
 
 class ApartmentlistScraper():
 
@@ -31,6 +32,7 @@ class ApartmentlistScraper():
 
         self.get_auth_cookie()
 
+
     def get_auth_cookie(self) -> None:
         """
         Aquire the necessary authkey cookie for the session to make api requests
@@ -40,6 +42,7 @@ class ApartmentlistScraper():
 
         # Raise an error if request was unsuccessful. I'm considering more complex error handling outside the scope of the challenge.
         response.raise_for_status()
+
 
     def get_rental_ids(self):
         """
@@ -63,11 +66,12 @@ class ApartmentlistScraper():
 
         ids = rental_id_re.findall(response.text)
 
-        return set(ids) # return id's as a sent since we only want unique values
+        return list(set(ids)) # cast id's as a sent since we only want unique values
 
-    def get_listing_data(self, rental_ids):
+
+    def get_listing_batch(self, rental_ids):
         """
-        Get listing data for all rentals in rental_ids set from listings api endpoint
+        Get listing data for all rentals in rental_ids_batch list from listings api endpoint
         """
         properties_to_query = ['address',
                                'amenities',
@@ -80,11 +84,92 @@ class ApartmentlistScraper():
         response.raise_for_status()
 
         listing_data = json.loads(response.text)
+
         return listing_data
+
+
+    def get_listing_data(self, rental_ids):
+        """
+        Get all listings in batches of 250 records
+        """
+
+        listings = []
+
+        rental_ids_list = list(rental_ids)
+        while rental_ids_list:
+            # take the first 250 rental_ids, then remove them from the list 
+            # (since api response appears to limited to 250 record)
+            rental_ids_batch = rental_ids_list[:250]
+            rental_ids_list = rental_ids_list[250:]
+
+            listing_data = self.get_listing_batch(rental_ids_batch)
+
+            listings += listing_data['listings']
+
+        return listings
+
+
+class ApartmentlistLoader():
+
+    def __init__(self) -> None:
+        self.conn = None
+        self.units_records = None
+        self.amenities_records = None
+
+    def connect_db(self, dsn):
+        self.conn = psycopg2.connection(dsn)
+
+    def parse_records(self, listings):
+        """
+        Flatten listings json to form units table and amenities table contents
+        """
+        units = self.flatten_units()
+        amenities = self.parse_amenites()
+
+    @staticmethod
+    def flatten_units(listings):
+        units = []
+        for listing in listings:
+            zip_code = listing['zip']
+            city = listing['city']
+            for unit in listing['all_units']:
+                unit_dict = {
+                    'unit_id': unit['id'],
+                    'zip': listing['zip'],
+                    'city': listing['city'],
+                    'bed': unit['bed'],
+                    'sqft': unit['sqft'],
+                }
+                units.append(unit_dict)
+        return units
+
+    @staticmethod
+    def flatten_amenities(listings):
+        ameneties = []
+        for listing in listings:
+            for unit in listing['all_units']:
+                unit_id = unit['id']
+                for amenity in listing['community_amenities']:
+                    ameneties.append({
+                        'unit_id': unit_id,
+                        'amenity': amenity['display_name'],
+                        'amenity_type': 'property'
+                                    })
+                for amenity in listing['community_amenities']:
+                    ameneties.append({
+                        'unit_id': unit_id,
+                        'amenity': amenity['display_name'],
+                        'amenity_type': 'unit'
+                                    })
+        return ameneties
+    
+    def load_units(self):
+        pass
+
 
         
 if __name__ == '__main__':
     scraper = ApartmentlistScraper()
     ids = scraper.get_rental_ids()
     data = scraper.get_listing_data(ids)
-    print(data)
+    print(len(data))
