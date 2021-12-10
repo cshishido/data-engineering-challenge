@@ -137,6 +137,8 @@ class ApartmentlistLoader():
         for unit in self.flatten_units(listings):
             if unit['sqft'] <= 0:
                 unit['sqft'] = None # Null preferable to 0 in database for missing sqft
+            if unit['rent'] <= 0:
+                unit['rent'] = None # Same goes for rent
             self.units_records.append(unit)
         return self.units_records, self.amenities_records                
 
@@ -153,6 +155,7 @@ class ApartmentlistLoader():
                     'city': listing['city'],
                     'bed': unit['bed'],
                     'sqft': unit['sqft'],
+                    'rent': unit['price']
                 }
                 units.append(unit_dict)
         return units
@@ -178,19 +181,27 @@ class ApartmentlistLoader():
         return ameneties
     
     def load_units(self):
-        units_insert_query = 'INSERT INTO units (unit_id, zip, city, bed, sqft) VALUES %s'
-        units_template = '(%(unit_id)s, %(zip)s, %(city)s, %(bed)s, %(sqft)s)'
+        """
+        Insert parsed unit records to the database
+        """
+        units_insert_query = 'INSERT INTO units (unit_id, zip, city, bed, sqft, rent) VALUES %s'
+        units_template = '(%(unit_id)s, %(zip)s, %(city)s, %(bed)s, %(sqft)s, %(rent)s)'
         cursor = self.conn.cursor()
         execute_values(cursor, units_insert_query, self.units_records, template=units_template)
 
     def load_amenities(self):
+        """
+        Insert parsed amenity records to the database
+        """
         amenities_insert_query = 'INSERT INTO amenities (unit_id, amenity, amenity_type) VALUES %s'
         amenities_template = '(%(unit_id)s, %(amenity)s, %(amenity_type)s)'
         cursor = self.conn.cursor()
         execute_values(cursor, amenities_insert_query, self.amenities_records, template=amenities_template)
 
     def load_all(self):
-
+        """
+        Load all parsed data and commit transaction
+        """
         self.connect_db(self.dsn)
         self.load_units()
         self.load_amenities()
